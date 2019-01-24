@@ -15,37 +15,101 @@
  */
 package com.example.android.quakereport;
 
+import android.content.Context;
 import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Bundle;
+
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
 
+import android.app.LoaderManager;
+import android.app.LoaderManager.LoaderCallbacks;
+import android.content.Loader;
+import android.widget.TextView;
+
 import java.util.ArrayList;
 
-public class EarthquakeActivity extends AppCompatActivity {
+public class EarthquakeActivity extends AppCompatActivity implements LoaderCallbacks<ArrayList<Earthquake>> {
 
+    private static final String USGS_REQUEST_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&eventtype=earthquake&orderby=time&minmag=6&limit=10";
     public static final String LOG_TAG = EarthquakeActivity.class.getSimpleName();
+    private TextView mEmptyStateTextView;
+
+    /**
+     * Valor constante para o ID do loader de earthquake. Podemos escolher qualquer inteiro.
+     * Isto só importa realmente se você estiver usando múltiplos loaders.
+     */
+    private static final int EARTHQUAKE_LOADER_ID = 1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.earthquake_activity);
 
-        ArrayList<Earthquake> earthquakes = QueryUtils.extractEarthquakes();
+        mEmptyStateTextView = findViewById(R.id.empty_view);
+        ListView earthquakeListView = findViewById(R.id.list);
 
-        /*// Create a fake list of earthquake locations.
+        earthquakeListView.setEmptyView(mEmptyStateTextView);
 
-        earthquakes.add(new Earthquake(1.0,"San Francisco", 1546439166620L));
-        earthquakes.add(new Earthquake(2.0,"London",1546439166620L));
-        earthquakes.add(new Earthquake(3.0,"Tokyo",1546439166620L));
-        earthquakes.add(new Earthquake(4.0,"Mexico City",1546439166620L));
-        earthquakes.add(new Earthquake(5.0,"Moscow",1546439166620L));
-        earthquakes.add(new Earthquake(6.0,"Rio de Janeiro",1546439166620L));
-        earthquakes.add(new Earthquake(7.0,"Paris",1546439166620L));*/
+        ConnectivityManager connMgr = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo networkInfo = connMgr.getActiveNetworkInfo();
 
+        // If there is a network connection, fetch data
+        if (networkInfo != null && networkInfo.isConnected()) {
+            // Obtém uma referência ao LoaderManager, a fim de interagir com loaders.
+            LoaderManager loaderManager = getLoaderManager();
+
+            // Inicializa o loader. Passa um ID constante int definido acima e passa nulo para
+            // o bundle. Passa esta activity para o parâmetro LoaderCallbacks (que é válido
+            // porque esta activity implementa a interface LoaderCallbacks).
+            Log.i(LOG_TAG, "Iniciando Loader");
+            loaderManager.initLoader(EARTHQUAKE_LOADER_ID, null, this);
+        } else {
+            // Otherwise, display error
+            // First, hide loading indicator so error message will be visible
+            View loadingIndicator = findViewById(R.id.loading_indicator);
+            loadingIndicator.setVisibility(View.GONE);
+            mEmptyStateTextView.setText(R.string.no_internet_connection);
+        }
+    }
+
+    @Override
+    public Loader<ArrayList<Earthquake>> onCreateLoader(int i, Bundle bundle) {
+        // Criar um novo loader para a dada URL
+        Log.i(LOG_TAG, "Loader criado");
+        return new EarthquakeLoader(this, USGS_REQUEST_URL);
+    }
+
+
+    @Override
+    public void onLoadFinished(android.content.Loader<ArrayList<Earthquake>> loader, ArrayList<Earthquake> earthquakes) {
+        // Esconde o indicador de carregamento porque os dados foram carregados
+        View loadingIndicator = findViewById(R.id.loading_indicator);
+        loadingIndicator.setVisibility(View.GONE);
+
+        // Seta o texto do estado vazio para mostrar "Nenhum terremoto encontrado."
+        mEmptyStateTextView.setText((R.string.no_earthquakes));
+
+        // Se há uma lista válida de {@link Earthquake}s, então os adiciona ao data set do adapter.
+        // Isto ativará a atualização da ListView.
+        Log.i(LOG_TAG, "Loader terminado");
+        if (earthquakes != null && !earthquakes.isEmpty()) {
+            updateUi(earthquakes);
+        }
+    }
+
+    @Override
+    public void onLoaderReset(android.content.Loader<ArrayList<Earthquake>> loader) {
+        Log.i(LOG_TAG, "Loader resetado");
+    }
+
+    private void updateUi(ArrayList<Earthquake> earthquakes) {
         // Find a reference to the {@link ListView} in the layout
         ListView earthquakeListView = findViewById(R.id.list);
 
